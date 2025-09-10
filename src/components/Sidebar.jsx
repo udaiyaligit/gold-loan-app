@@ -1,12 +1,6 @@
 // src/components/Sidebar.jsx
 import React, { useState } from "react";
 
-/**
- * Reusable Sidebar with expandable groups.
- * - Keeps full menu visible
- * - Menu groups can expand/collapse
- * - Uses Tailwind color classes (you can adjust)
- */
 export default function Sidebar({ initialActive = "dashboard" }) {
   const [active, setActive] = useState(initialActive);
   const [expanded, setExpanded] = useState({
@@ -57,7 +51,6 @@ export default function Sidebar({ initialActive = "dashboard" }) {
           <button
             onClick={() => toggleGroup("pledge")}
             className="text-sm px-2 py-1 text-slate-300 hover:text-white"
-            aria-label="toggle"
           >
             {expanded.pledge ? "▾" : "▸"}
           </button>
@@ -111,7 +104,7 @@ export default function Sidebar({ initialActive = "dashboard" }) {
         </button>
       </div>
 
-      {/* Reports */}
+      {/* Reports group */}
       <div className="mb-3">
         <div className="flex items-center justify-between">
           <button onClick={() => toggleGroup("reports")} className="text-sm px-2 py-1 text-slate-200 hover:text-white">
@@ -134,7 +127,6 @@ export default function Sidebar({ initialActive = "dashboard" }) {
         )}
       </div>
 
-      {/* Footer small links */}
       <div className="mt-6 text-xs text-slate-300">
         <div className="mb-1">v0.1</div>
         <div>Superadmin</div>
