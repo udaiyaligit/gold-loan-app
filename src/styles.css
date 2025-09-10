@@ -1,0 +1,29 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root {
+  height: 100%;
+  background: #f8fafc;
+}
+
+/* ensure body / root take full height and remove any unexpected scroll padding */
+html, body, #root {
+  height: 100%;
+}
+
+/* optionally tighten the left nav look */
+aside nav a {
+  display: block;
+  text-decoration: none;
+}
+
+/* style for main scroll - already set by tailwind classes, but ensure smooth */
+main {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* small responsive tweak so chart heights remain visible */
+@media (min-width: 768px) {
+  .h-60 { height: 15rem; }
+}
