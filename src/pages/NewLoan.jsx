@@ -1,213 +1,262 @@
-import React, { useState } from "react";
-import Card from "../components/ui/Card";
-import CardContent from "../components/ui/CardContent";
+// src/pages/NewLoan.jsx
+import React, { useEffect, useMemo, useState } from "react";
+import Sidebar from "../components/Sidebar";
+
+/**
+ * NewLoan page (complete)
+ * - Single page UI for adding a new pledge / loan
+ * - Local state only (no backend)
+ */
+
+// small helper to format INR
+function fmtINR(num) {
+  if (!num && num !== 0) return "₹ 0";
+  return "₹ " + Number(num).toLocaleString("en-IN");
+}
+
+const defaultItem = () => ({
+  id: Date.now() + Math.random().toString(36).slice(2, 7),
+  type: "",
+  gross: "",
+  wastagePct: "",
+  stone: "",
+  purity: "916",
+  net: 0,
+  value: 0,
+  image: null,
+});
 
 export default function NewLoan() {
+  // shop-app-wide gold rate (would come from internet in final)
+  const [goldRate, setGoldRate] = useState(5200); // rupees per gram
   const [customer, setCustomer] = useState({
     name: "",
     phone: "",
     govtId: "",
-    address: ""
+    address: "",
+    photo: null,
   });
 
-  const [items, setItems] = useState([
-    { id: 1, type: "", gross: "", wastage: "", stone: "", purity: "916", net: 0, value: 0 }
-  ]);
+  const [items, setItems] = useState([defaultItem()]);
+  const [processingCharge, setProcessingCharge] = useState(10);
+  const [loanPct, setLoanPct] = useState(80);
+  const [interestPct, setInterestPct] = useState(1);
+  const [loanDate, setLoanDate] = useState("");
+  const [dueDate, setDueDate] = useState("");
 
-  const goldRatePerGram = 5200; // placeholder: will be fetched later
+  useEffect(() => {
+    // ensure at least one row
+    if (items.length === 0) setItems([defaultItem()]);
+    // eslint-disable-next-line
+  }, []);
 
-  function handleCustomerChange(e) {
-    setCustomer({ ...customer, [e.target.name]: e.target.value });
+  function updateItem(id, changes) {
+    setItems((prev) => prev.map((it) => (it.id === id ? { ...it, ...changes } : it)));
   }
 
-  function handleItemChange(index, field, value) {
-    const newItems = items.map((it, i) => {
-      if (i !== index) return it;
-      const updated = { ...it, [field]: value };
-
-      // compute net weight and value when relevant fields change
-      const gross = parseFloat(updated.gross) || 0;
-      const stone = parseFloat(updated.stone) || 0;
-      const wastagePct = parseFloat(updated.wastage) || 0;
-      const purity = parseFloat(updated.purity) || 0;
-
-      // net weight = gross - stone - (gross * wastage%)
-      const net = Math.max(0, gross - stone - (gross * (wastagePct / 100)));
-      updated.net = Number(net.toFixed(3));
-
-      // value = net * (purity/1000) * ratePerGram
-      // purity is like 916 or 999 so use purity/1000
-      const value = updated.net * ((purity || 916) / 1000) * goldRatePerGram;
-      updated.value = Number(value.toFixed(2));
-
-      return updated;
-    });
-
-    setItems(newItems);
+  function addItem() {
+    setItems((prev) => [...prev, defaultItem()]);
   }
 
-  function handleAddItem() {
-    setItems([
-      ...items,
-      { id: Date.now(), type: "", gross: "", wastage: "", stone: "", purity: "916", net: 0, value: 0 }
-    ]);
+  function removeItem(id) {
+    setItems((prev) => prev.filter((it) => it.id !== id));
   }
 
-  function handleRemoveItem(idx) {
-    const newItems = items.filter((_, i) => i !== idx);
-    setItems(newItems);
+  // compute net grams and value for each item when inputs change
+  useEffect(() => {
+    setItems((prev) =>
+      prev.map((it) => {
+        const gross = parseFloat(it.gross) || 0;
+        const wastagePct = parseFloat(it.wastagePct) || 0;
+        const stone = parseFloat(it.stone) || 0;
+        const purity = parseFloat(it.purity) || 916;
+        // net grams = gross - (gross * wastage%) - stone grams
+        const net = Math.max(0, gross - (gross * wastagePct) / 100 - stone);
+        // value calculation uses goldRate and purity: value = net * goldRate * (purity/1000)
+        const value = (net * goldRate * (purity / 1000)) || 0;
+        return { ...it, net: Number(net.toFixed(3)), value: Number(value.toFixed(2)) };
+      })
+    );
+  }, [items.map(i => `${i.gross}|${i.wastagePct}|${i.stone}|${i.purity}`).join("||"), goldRate]); // eslint note: we create a string to watch changes
+
+  // totals
+  const totals = useMemo(() => {
+    const totalNet = items.reduce((s, it) => s + (parseFloat(it.net) || 0), 0);
+    const totalValue = items.reduce((s, it) => s + (parseFloat(it.value) || 0), 0);
+    const loanAmount = Math.round((totalValue * (loanPct / 100)) || 0);
+    const givenAmount = Math.round(loanAmount - processingCharge);
+    return { totalNet, totalValue: Number(totalValue.toFixed(2)), loanAmount, givenAmount };
+  }, [items, loanPct, processingCharge]);
+
+  function handleCustomerPhoto(file) {
+    setCustomer((c) => ({ ...c, photo: file ? URL.createObjectURL(file) : null }));
   }
 
-  // totals & loan calc (simple)
-  const totalJewelValue = items.reduce((s, it) => s + (parseFloat(it.value) || 0), 0);
-  const selectedLoanPct = 80; // example scheme default
-  const loanAmount = Math.round((totalJewelValue * selectedLoanPct) / 100);
-  const processingCharge = 10; // placeholder fixed
-  const givenAmount = loanAmount - processingCharge;
+  function handleItemImage(id, file) {
+    updateItem(id, { image: file ? URL.createObjectURL(file) : null });
+  }
+
+  function saveLoan(print = false) {
+    // build payload (client-side mock)
+    const payload = {
+      customer,
+      items,
+      totals,
+      processingCharge,
+      loanPct,
+      interestPct,
+      loanDate,
+      dueDate,
+      goldRate,
+      createdAt: new Date().toISOString(),
+    };
+
+    // for now just console.log and show alert
+    console.log("Saving loan (mock):", payload);
+    alert("Loan saved (mock). Check console for payload.\n" + (print ? "Print flow not implemented in demo." : ""));
+  }
 
   return (
     <div className="min-h-screen flex bg-slate-50">
-      {/* Sidebar left - keep minimal because Dashboard already has it */}
-      <aside className="w-64 bg-slate-800 text-white p-6 flex-shrink-0 h-screen sticky top-0">
-        <div className="rounded-2xl overflow-hidden">
-          <div className="mb-6">
-            <h2 className="text-xl font-bold">Menu</h2>
-          </div>
-          <nav>
-            <ul className="space-y-2 text-sm">
-              <li><a href="/" onClick={(e)=>{e.preventDefault(); window.history.pushState({}, "", "/"); window.dispatchEvent(new PopStateEvent("popstate"));}} className="block px-3 py-2 rounded-lg hover:bg-slate-700">Dashboard</a></li>
-              <li className="font-semibold">Pledge Entry</li>
-              <li><a href="/loan" onClick={(e)=>e.preventDefault()} className="block px-3 py-2 rounded-lg bg-slate-700">New Loan</a></li>
-            </ul>
-          </nav>
-        </div>
-      </aside>
+      <Sidebar initialActive="pledge-new" />
 
       <main className="flex-1 p-6 overflow-auto">
-        <h1 className="text-2xl font-bold mb-4">New Loan Entry</h1>
+        <h1 className="text-2xl font-semibold mb-4">New Loan Entry</h1>
 
-        {/* Customer Section */}
-        <Card className="bg-white border mb-4">
-          <CardContent>
-            <h3 className="text-lg font-semibold mb-2">Customer Details</h3>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <input name="name" value={customer.name} onChange={handleCustomerChange} placeholder="Customer Name" className="p-2 border rounded" />
-              <input name="phone" value={customer.phone} onChange={handleCustomerChange} placeholder="Phone Number" className="p-2 border rounded" />
-              <input name="govtId" value={customer.govtId} onChange={handleCustomerChange} placeholder="Govt ID" className="p-2 border rounded" />
-              <input name="address" value={customer.address} onChange={handleCustomerChange} placeholder="Address" className="p-2 border rounded" />
+        {/* Customer Details */}
+        <section className="bg-white rounded-lg p-4 mb-6 shadow">
+          <h2 className="text-lg font-medium mb-3">Customer Details</h2>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <input className="border rounded px-3 py-2" placeholder="Customer Name" value={customer.name} onChange={(e) => setCustomer({ ...customer, name: e.target.value })} />
+            <input className="border rounded px-3 py-2" placeholder="Phone Number" value={customer.phone} onChange={(e) => setCustomer({ ...customer, phone: e.target.value })} />
+            <input className="border rounded px-3 py-2" placeholder="Govt ID" value={customer.govtId} onChange={(e) => setCustomer({ ...customer, govtId: e.target.value })} />
+            <input className="border rounded px-3 py-2" placeholder="Address" value={customer.address} onChange={(e) => setCustomer({ ...customer, address: e.target.value })} />
+            <div className="md:col-span-2 mt-2">
+              <label className="block text-sm text-slate-700 mb-1">Upload Customer Photo</label>
+              <input type="file" accept="image/*" onChange={(e) => { handleCustomerPhoto(e.target.files[0]); }} />
+              {customer.photo && <img src={customer.photo} alt="customer" className="mt-2 w-28 h-28 object-cover rounded" />}
             </div>
+            <div className="md:col-span-2"></div>
+          </div>
+        </section>
 
-            <div className="mt-3">
-              <label className="text-sm font-medium">Upload Customer Photo:</label>
-              <input type="file" className="block mt-1" />
-            </div>
-          </CardContent>
-        </Card>
+        {/* Gold Items */}
+        <section className="bg-white rounded-lg p-4 mb-6 shadow">
+          <h2 className="text-lg font-medium mb-3">Gold Items</h2>
 
-        {/* Gold Items Section */}
-        <Card className="bg-white border mb-4">
-          <CardContent>
-            <h3 className="text-lg font-semibold mb-2">Gold Items</h3>
-
-            <div className="text-sm font-medium grid grid-cols-8 gap-2 mb-1">
-              <div>Type</div><div>Gross (g)</div><div>Wastage %</div><div>Stone (g)</div><div>Purity</div><div>Net (g)</div><div>Value (₹)</div><div></div>
-            </div>
-
-            <div className="space-y-2">
-              {items.map((item, idx) => (
-                <div key={item.id} className="grid grid-cols-8 gap-2 text-sm items-center">
-                  <select value={item.type} onChange={(e)=>handleItemChange(idx,"type",e.target.value)} className="p-2 border rounded">
+          <div className="space-y-3">
+            {items.map((it, idx) => (
+              <div key={it.id} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center border rounded p-3">
+                <div className="md:col-span-2">
+                  <select className="w-full border rounded px-2 py-1" value={it.type} onChange={(e) => updateItem(it.id, { type: e.target.value })}>
                     <option value="">Type</option>
-                    <option value="chain">Chain</option>
-                    <option value="ring">Ring</option>
-                    <option value="stud">Stud</option>
+                    <option>Ring</option>
+                    <option>Chain</option>
+                    <option>Bangle</option>
+                    <option>Loose</option>
                   </select>
-
-                  <input type="number" value={item.gross} onChange={(e)=>handleItemChange(idx,"gross",e.target.value)} placeholder="Gross" className="p-2 border rounded" />
-                  <input type="number" value={item.wastage} onChange={(e)=>handleItemChange(idx,"wastage",e.target.value)} placeholder="Wastage %" className="p-2 border rounded" />
-                  <input type="number" value={item.stone} onChange={(e)=>handleItemChange(idx,"stone",e.target.value)} placeholder="Stone" className="p-2 border rounded" />
-                  <select value={item.purity} onChange={(e)=>handleItemChange(idx,"purity",e.target.value)} className="p-2 border rounded">
-                    <option value="916">916</option>
-                    <option value="999">999</option>
-                    <option value="750">750</option>
-                  </select>
-
-                  <input type="text" value={item.net} readOnly className="p-2 border rounded bg-gray-50" />
-                  <input type="text" value={item.value} readOnly className="p-2 border rounded bg-gray-50" />
-                  <div className="flex items-center space-x-2">
-                    <input type="file" />
-                    {items.length > 1 && <button onClick={()=>handleRemoveItem(idx)} className="text-red-600">Remove</button>}
-                  </div>
                 </div>
-              ))}
-            </div>
 
-            <button onClick={handleAddItem} className="mt-3 px-4 py-2 bg-blue-600 text-white rounded">+ Add Item</button>
-          </CardContent>
-        </Card>
+                <div className="md:col-span-2">
+                  <input className="w-full border rounded px-2 py-1" placeholder="Gross (g)" value={it.gross} onChange={(e) => updateItem(it.id, { gross: e.target.value })} />
+                </div>
+
+                <div className="md:col-span-2">
+                  <input className="w-full border rounded px-2 py-1" placeholder="Wastage %" value={it.wastagePct} onChange={(e) => updateItem(it.id, { wastagePct: e.target.value })} />
+                </div>
+
+                <div className="md:col-span-1">
+                  <input className="w-full border rounded px-2 py-1" placeholder="Stone (g)" value={it.stone} onChange={(e) => updateItem(it.id, { stone: e.target.value })} />
+                </div>
+
+                <div className="md:col-span-2">
+                  <select className="w-full border rounded px-2 py-1" value={it.purity} onChange={(e) => updateItem(it.id, { purity: e.target.value })}>
+                    <option value="999">999</option>
+                    <option value="916">916</option>
+                    <option value="750">750</option>
+                    <option value="585">585</option>
+                  </select>
+                </div>
+
+                <div className="md:col-span-1 text-sm">
+                  <div>Net</div>
+                  <div className="font-semibold">{it.net} g</div>
+                </div>
+
+                <div className="md:col-span-2 text-sm">
+                  <div>Value</div>
+                  <div className="font-semibold">{fmtINR(it.value)}</div>
+                </div>
+
+                <div className="md:col-span-1 flex items-center gap-2">
+                  <input type="file" accept="image/*" onChange={(e) => handleItemImage(it.id, e.target.files[0])} />
+                  <button className="text-red-600 text-sm" onClick={() => removeItem(it.id)}>Remove</button>
+                </div>
+              </div>
+            ))}
+
+            <div>
+              <button className="bg-blue-600 text-white px-4 py-2 rounded" onClick={addItem}>+ Add Item</button>
+            </div>
+          </div>
+        </section>
 
         {/* Loan Details */}
-        <Card className="bg-white border mb-4">
-          <CardContent>
-            <h3 className="text-lg font-semibold mb-2">Loan Details</h3>
+        <section className="bg-white rounded-lg p-4 mb-6 shadow">
+          <h2 className="text-lg font-medium mb-3">Loan Details</h2>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <p className="text-sm">Total Jewel Value</p>
-                <p className="text-lg font-bold">₹ {totalJewelValue.toFixed(2)}</p>
-              </div>
-
-              <div>
-                <p className="text-sm">Loan % (scheme)</p>
-                <select className="p-2 border rounded w-full">
-                  <option value="80">80%</option>
-                  <option value="75">75%</option>
-                  <option value="70">70%</option>
-                </select>
-              </div>
-
-              <div>
-                <p className="text-sm">Loan Amount</p>
-                <p className="text-lg font-bold">₹ {loanAmount}</p>
-              </div>
-
-              <div>
-                <p className="text-sm">Processing Charge</p>
-                <input type="number" className="p-2 border rounded w-full" defaultValue={processingCharge} />
-              </div>
-
-              <div>
-                <p className="text-sm">Given Amount</p>
-                <p className="text-lg font-bold">₹ {givenAmount}</p>
-              </div>
-
-              <div>
-                <p className="text-sm">Interest %</p>
-                <select className="p-2 border rounded w-full">
-                  <option>1%</option>
-                  <option>1.5%</option>
-                  <option>2%</option>
-                </select>
-              </div>
-
-              <div>
-                <p className="text-sm">Loan Date</p>
-                <input type="date" className="p-2 border rounded w-full" />
-              </div>
-
-              <div>
-                <p className="text-sm">Due Date</p>
-                <input type="date" className="p-2 border rounded w-full" />
-              </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="p-3 border rounded">
+              <p className="text-sm">Total Jewel Value</p>
+              <p className="text-xl font-bold">{fmtINR(totals.totalValue)}</p>
+              <p className="text-sm text-slate-500 mt-1">{totals.totalNet} g total</p>
             </div>
-          </CardContent>
-        </Card>
 
-        {/* Actions */}
-        <div className="flex gap-3">
-          <button className="px-6 py-3 bg-green-600 text-white rounded-lg shadow">Save Loan</button>
-          <button className="px-6 py-3 bg-blue-600 text-white rounded-lg shadow">Save & Print Receipt</button>
-        </div>
+            <div className="p-3 border rounded">
+              <label className="block text-sm mb-1">Loan % (scheme)</label>
+              <select className="w-full border rounded px-2 py-1" value={loanPct} onChange={(e) => setLoanPct(Number(e.target.value))}>
+                <option value={80}>80%</option>
+                <option value={75}>75%</option>
+                <option value={70}>70%</option>
+                <option value={85}>85%</option>
+              </select>
+
+              <div className="mt-3 text-sm">Loan Amount: <span className="font-semibold">{fmtINR(totals.loanAmount)}</span></div>
+              <div className="mt-1 text-sm">Given Amount: <span className="font-semibold">{fmtINR(totals.givenAmount)}</span></div>
+            </div>
+
+            <div className="p-3 border rounded">
+              <label className="block text-sm mb-1">Processing Charge</label>
+              <input className="w-full border rounded px-2 py-1" value={processingCharge} onChange={(e) => setProcessingCharge(Number(e.target.value) || 0)} />
+              <label className="block text-sm mt-3 mb-1">Interest %</label>
+              <select className="w-full border rounded px-2 py-1" value={interestPct} onChange={(e) => setInterestPct(Number(e.target.value))}>
+                <option value={1}>1%</option>
+                <option value={1.5}>1.5%</option>
+                <option value={2}>2%</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+            <div>
+              <label className="block text-sm mb-1">Loan Date</label>
+              <input type="date" className="w-full border rounded px-2 py-1" value={loanDate} onChange={(e) => setLoanDate(e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-sm mb-1">Due Date</label>
+              <input type="date" className="w-full border rounded px-2 py-1" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-sm mb-1">Gold Rate (₹ / g)</label>
+              <input className="w-full border rounded px-2 py-1" value={goldRate} onChange={(e) => setGoldRate(Number(e.target.value) || 0)} />
+            </div>
+          </div>
+
+          <div className="mt-4 flex gap-3">
+            <button className="bg-green-600 text-white px-4 py-2 rounded" onClick={() => saveLoan(false)}>Save Loan</button>
+            <button className="bg-blue-600 text-white px-4 py-2 rounded" onClick={() => saveLoan(true)}>Save & Print Receipt</button>
+          </div>
+        </section>
       </main>
     </div>
   );

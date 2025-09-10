@@ -1,3 +1,4 @@
+// src/pages/Dashboard.jsx
 import React from "react";
 import Sidebar from "../components/Sidebar";
 import Card from "../components/ui/Card";
